@@ -60,86 +60,26 @@ def renumber(items):
         item["position"] = idx + 1
     return items
 
+def ensure_positions(items):
+    # Add position if missing, then re-number all
+    for idx, item in enumerate(items):
+        if "position" not in item:
+            item["position"] = idx + 1
+    return renumber(items)
+
 st.title("📝 Daily Trading Checklist")
 
 data = load_checklist()
-items = sorted(data.get("items", []), key=lambda x: x["position"])
+# Migration: fix missing "position" fields
+items = data.get("items", [])
+items = ensure_positions(items)
+data["items"] = items  # Save migration
+
+# Now sort using the fixed key
+items = sorted(items, key=lambda x: x.get("position", 9999))
 checked = set(data.get("checked", []))
 
 # 1. Add new checklist item
 with st.form(key="add_item_form"):
     new_item = st.text_input("Add a new checklist item", "")
-    submitted = st.form_submit_button("Add")
-    if submitted and new_item.strip():
-        items.append({"position": len(items)+1, "text": new_item.strip()})
-        items = renumber(items)
-        st.success(f"Added: {new_item.strip()}")
-
-# 2. Move checklist items (drag-and-drop)
-st.write("### Reorder your checklist")
-df = pd.DataFrame([{"#": item["position"], "Checklist": item["text"]} for item in items])
-edited_df = st.data_editor(
-    df,
-    hide_index=True,
-    use_container_width=True,
-    column_config={
-        "#": st.column_config.Column(
-            "#", required=True, width="small"
-        ),
-        "Checklist": st.column_config.Column(
-            "Checklist Item",
-            required=True,
-            width="large"
-        )
-    },
-    num_rows="dynamic",
-    key="editor",
-    disabled=["#", "Checklist"] # disables text editing, allows moving
-)
-
-# Save reordering
-if st.button("Save New Order"):
-    # Use row order in edited_df to update items
-    new_order_texts = edited_df["Checklist"].tolist()
-    items_dict = {item["text"]: item for item in items}
-    items = [{"position": i+1, "text": txt} for i, txt in enumerate(new_order_texts) if txt in items_dict]
-    items = renumber(items)
-    data["items"] = items
-    save_checklist(data)
-    st.success("Checklist order saved!")
-
-# 3. Checklist with checkboxes and numbering
-st.write("### Daily checklist (tick as you go)")
-checked_today = []
-for item in items:
-    label = f"{item['position']}. {item['text']}"
-    checked_state = st.checkbox(label, key=f"item_{item['position']}", value=(item["text"] in checked))
-    if checked_state:
-        checked_today.append(item["text"])
-
-# 4. Remove checklist item
-st.write("### Remove Items")
-to_delete = st.multiselect("Select checklist items to remove", options=[item["text"] for item in items])
-if st.button("Delete selected"):
-    items = [item for item in items if item["text"] not in to_delete]
-    items = renumber(items)
-    checked = [item for item in checked if item not in to_delete]
-    st.success(f"Deleted: {', '.join(to_delete)}")
-
-# 5. Save checklist state (checked/unchecked and order)
-data = {"items": items, "checked": checked_today}
-save_checklist(data)
-
-# 6. Reminder: Must complete before 9 am
-now = datetime.now()
-cutoff = time(9, 0)
-if now.time() < cutoff:
-    st.info(f"⏰ Please complete this checklist before **9:00 am**! ({now.strftime('%H:%M')})")
-else:
-    if len(checked_today) == len(items) and items:
-        st.success("✅ All checklist items completed for today!")
-    else:
-        st.warning("⚠️ You haven't completed all checklist items today.")
-
-st.write("---")
-st.caption("Tip: Drag to reorder, add/remove items as needed. Numbers update automatically to reflect order.")
+    submitted = st.form
