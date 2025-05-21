@@ -7,7 +7,6 @@ import pandas as pd
 CHECKLIST_FILE = "trading_checklist.json"
 
 DEFAULT_ITEMS = [
-    # Original and new items
     "Are market conditions (volatility, trend) right for this trade?",
     "Are there major news events that may occur during the trade?",
     "Correct entry point based on strategy?",
@@ -42,16 +41,29 @@ def load_checklist():
         with open(CHECKLIST_FILE, "r") as f:
             return json.load(f)
     else:
-        return {"items": DEFAULT_ITEMS, "checked": []}
+        # Build checklist as list of dicts with position
+        return {
+            "items": [
+                {"position": i+1, "text": text}
+                for i, text in enumerate(DEFAULT_ITEMS)
+            ],
+            "checked": []
+        }
 
 def save_checklist(data):
     with open(CHECKLIST_FILE, "w") as f:
-        json.dump(data, f)
+        json.dump(data, f, indent=2)
+
+def renumber(items):
+    """Ensures position is always sequential."""
+    for idx, item in enumerate(items):
+        item["position"] = idx + 1
+    return items
 
 st.title("📝 Daily Trading Checklist")
 
 data = load_checklist()
-items = data.get("items", [])
+items = sorted(data.get("items", []), key=lambda x: x["position"])
 checked = set(data.get("checked", []))
 
 # 1. Add new checklist item
@@ -59,17 +71,21 @@ with st.form(key="add_item_form"):
     new_item = st.text_input("Add a new checklist item", "")
     submitted = st.form_submit_button("Add")
     if submitted and new_item.strip():
-        items.append(new_item.strip())
+        items.append({"position": len(items)+1, "text": new_item.strip()})
+        items = renumber(items)
         st.success(f"Added: {new_item.strip()}")
 
 # 2. Move checklist items (drag-and-drop)
 st.write("### Reorder your checklist")
-df = pd.DataFrame({'Checklist': items})
+df = pd.DataFrame([{"#": item["position"], "Checklist": item["text"]} for item in items])
 edited_df = st.data_editor(
     df,
     hide_index=True,
     use_container_width=True,
     column_config={
+        "#": st.column_config.Column(
+            "#", required=True, width="small"
+        ),
         "Checklist": st.column_config.Column(
             "Checklist Item",
             required=True,
@@ -78,29 +94,35 @@ edited_df = st.data_editor(
     },
     num_rows="dynamic",
     key="editor",
-    disabled=["Checklist"]
+    disabled=["#", "Checklist"] # disables text editing, allows moving
 )
 
+# Save reordering
 if st.button("Save New Order"):
-    new_order = edited_df["Checklist"].tolist()
-    data["items"] = new_order
-    items = new_order
+    # Use row order in edited_df to update items
+    new_order_texts = edited_df["Checklist"].tolist()
+    items_dict = {item["text"]: item for item in items}
+    items = [{"position": i+1, "text": txt} for i, txt in enumerate(new_order_texts) if txt in items_dict]
+    items = renumber(items)
+    data["items"] = items
     save_checklist(data)
     st.success("Checklist order saved!")
 
-# 3. Checklist with checkboxes
-checked_today = []
+# 3. Checklist with checkboxes and numbering
 st.write("### Daily checklist (tick as you go)")
-for idx, item in enumerate(items):
-    checked_state = st.checkbox(item, key=f"item_{idx}", value=(item in checked))
+checked_today = []
+for item in items:
+    label = f"{item['position']}. {item['text']}"
+    checked_state = st.checkbox(label, key=f"item_{item['position']}", value=(item["text"] in checked))
     if checked_state:
-        checked_today.append(item)
+        checked_today.append(item["text"])
 
 # 4. Remove checklist item
 st.write("### Remove Items")
-to_delete = st.multiselect("Select checklist items to remove", options=items)
+to_delete = st.multiselect("Select checklist items to remove", options=[item["text"] for item in items])
 if st.button("Delete selected"):
-    items = [item for item in items if item not in to_delete]
+    items = [item for item in items if item["text"] not in to_delete]
+    items = renumber(items)
     checked = [item for item in checked if item not in to_delete]
     st.success(f"Deleted: {', '.join(to_delete)}")
 
@@ -120,4 +142,4 @@ else:
         st.warning("⚠️ You haven't completed all checklist items today.")
 
 st.write("---")
-st.caption("Tip: Drag and drop to reorder your checklist, add new items, or delete any item. Keep this checklist open every morning for optimal trading discipline.")
+st.caption("Tip: Drag to reorder, add/remove items as needed. Numbers update automatically to reflect order.")
