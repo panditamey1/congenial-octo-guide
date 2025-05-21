@@ -66,14 +66,40 @@ def ensure_positions(items):
         if "position" not in item:
             item["position"] = idx + 1
     return renumber(items)
+def load_checklist():
+    if os.path.exists(CHECKLIST_FILE):
+        with open(CHECKLIST_FILE, "r") as f:
+            return json.load(f)
+    else:
+        # Build checklist as list of dicts with position
+        return {
+            "items": [
+                {"position": i+1, "text": text}
+                for i, text in enumerate(DEFAULT_ITEMS)
+            ],
+            "checked": []
+        }
+
+def migrate_items(items):
+    """Convert a list of strings to a list of dicts with 'text' and 'position'."""
+    if not items:
+        return []
+    if isinstance(items[0], dict):
+        # Already migrated
+        return items
+    # Legacy list of strings; migrate!
+    return [{"position": i + 1, "text": txt} for i, txt in enumerate(items)]
+
+# ...rest of your code...
+
 
 st.title("📝 Daily Trading Checklist")
-
 data = load_checklist()
-# Migration: fix missing "position" fields
-items = data.get("items", [])
+# MIGRATE legacy: If list of strings, convert to list of dicts
+items = migrate_items(data.get("items", []))
 items = ensure_positions(items)
-data["items"] = items  # Save migration
+data["items"] = items
+
 
 # Now sort using the fixed key
 items = sorted(items, key=lambda x: x.get("position", 9999))
