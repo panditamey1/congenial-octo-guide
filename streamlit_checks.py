@@ -106,6 +106,11 @@ items = sorted(items, key=lambda x: x.get("position", 9999))
 checked = set(data.get("checked", []))
 
 # 1. Add new checklist item
+# 1. Add new checklist item
 with st.form(key="add_item_form"):
     new_item = st.text_input("Add a new checklist item", "")
-    submitted = st.form
+    submitted = st.form_submit_button("Add")
+    if submitted and new_item.strip():
+        items.append({"position": len(items)+1, "text": new_item.strip()})
+        items = renumber(items)
+        st.success(f"Added: {new_item.strip()}")
